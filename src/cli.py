@@ -35,9 +35,15 @@ def main():
 
     while True:
         print_menu()
-        choice: int = click.prompt(
-            click.style("Enter your choice (1-5)", fg="yellow"), type=int
-        )
+        try:
+            choice: int = click.prompt(
+                click.style("Enter your choice (1-5)", fg="yellow"), type=int
+            )
+        except UnicodeDecodeError:
+            click.echo(
+                click.style("Invalid input. Please use UTF-8 characters.", fg="red")
+            )
+            continue
 
         if choice == 5:
             click.echo(click.style("Exiting the program. Goodbye!", fg="green"))
