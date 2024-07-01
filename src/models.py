@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict, Union
 
 
 class Package(BaseModel):
@@ -19,7 +19,12 @@ class BranchPackages(BaseModel):
     packages: List[Package]
 
 
+class PackageInfo(BaseModel):
+    count_arches: int
+    packages: List[Dict[str, Union[str, int]]]
+
+
 class ComparisonResult(BaseModel):
-    only_in_p10: List[Package]
-    only_in_sisyphus: List[Package]
-    higher_in_sisyphus: List[Package]
+    only_in_p10: Dict[str, Union[int, PackageInfo]]
+    only_in_sisyphus: Dict[str, Union[int, PackageInfo]]
+    higher_in_sisyphus: Dict[str, Union[int, PackageInfo]]
