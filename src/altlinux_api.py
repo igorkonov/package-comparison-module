@@ -1,33 +1,56 @@
 import requests
-from src.logging_config import log
+import time
+from typing import Optional, Dict, Any
+from tqdm import tqdm
 from src.config import config
-from src.models import BranchPackages
+from src.logging_config import log
 
 
 class AltLinuxAPI:
     """Class to interact with ALT Linux API."""
 
     def __init__(self) -> None:
-        self.base_url = config.base_url
+        self.base_url: str = config.base_url
 
-    def get_branch_packages(self, branch: str) -> BranchPackages:
+    def fetch_packages(self, branch: str, arch: Optional[str] = None) -> Dict[str, Any]:
         """
-        Retrieves the branch packages based on the provided branch name.
+        Fetches packages for a specific branch from the ALT Linux API.
         Args:
-            branch (str): The name of the branch to fetch packages from.
+            branch (str): The branch for which packages are to be fetched.
+            arch (Optional[str]): The architecture of the packages to fetch.
         Returns:
-            BranchPackages: An instance of BranchPackages class containing the fetched packages.
+            Dict[str, Any]: A dictionary containing the fetched packages.
         Raises:
-            Exception: If the data retrieval for the specified branch fails.
+            requests.exceptions.RequestException: If there is an issue with the request.
         """
+        if branch not in config.branches:
+            log.error(f"Invalid branch '{branch}'. Allowed branches: {config.branches}")
+
         url: str = f"{self.base_url}/export/branch_binary_packages/{branch}"
+        params: dict = {"arch": arch} if arch else {}
         log.debug(f"Fetching packages from URL: {url}")
+
         try:
-            response = requests.get(url)
+            start_time: float = time.time()
+            response: requests.Response = requests.get(url, params=params)
             response.raise_for_status()
+            end_time: float = time.time()
+            elapsed_time: float = end_time - start_time
+
+            with tqdm(
+                total=100, desc=f"Fetching data for {branch}", leave=True
+            ) as pbar:
+
+                for _ in range(100):
+                    time.sleep(elapsed_time / 100)
+                    pbar.update(1)
+
+            log.success(f"Successfully fetched packages for branch {branch}")
+
+            packages: Dict[str, Any] = response.json().get("packages")
+
+            return packages
+
         except requests.exceptions.RequestException as e:
             log.error(f"Failed to fetch data for branch {branch}: {e}")
-            raise Exception(f"Failed to fetch data for branch {branch}") from e
-        packages: BranchPackages = BranchPackages(**response.json())
-        log.success(f"Successfully fetched packages for branch {branch}")
-        return packages
+            return {}
