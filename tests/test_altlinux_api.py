@@ -1,75 +1,56 @@
-import pytest
+from pytest_mock import MockerFixture
 from src.altlinux_api import AltLinuxAPI
-from src.models import BranchPackages
-from pytest_mock import MockType
 
 
-@pytest.fixture
-def alt_linux_api():
+def test_fetch_packages_success(mocker: MockerFixture) -> None:
     """
-    Fixture function to create an instance of AltLinuxAPI for testing purposes.
+    Test for successful fetching of packages.
     """
-    return AltLinuxAPI()
-
-
-def test_get_branch_packages_success(alt_linux_api: AltLinuxAPI, mocker: MockType):
-    """
-    Test function to validate successful retrieval of branch packages.
-    Args:
-        alt_linux_api (AltLinuxAPI): An instance of AltLinuxAPI for testing purposes.
-        mocker (MockType): A mocker object for mocking requests.
-    """
+    api = AltLinuxAPI()
     mock_response = mocker.Mock()
-    mock_response.json.return_value = {
-        "request_args": {},
-        "length": 1,
-        "packages": [
-            {
-                "name": "test_package",
-                "epoch": 0,
-                "version": "1.0",
-                "release": "1",
-                "arch": "x86_64",
-                "disttag": "p10",
-                "buildtime": 1234567890,
-                "source": "test_source",
-            }
-        ],
-    }
-    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {"packages": [{"name": "test_package"}]}
     mocker.patch("requests.get", return_value=mock_response)
 
-    result = alt_linux_api.get_branch_packages("p10")
-    assert isinstance(result, BranchPackages)
-    assert len(result.packages) == 1
-    assert result.packages[0].name == "test_package"
+    result = api.fetch_packages("sisyphus", "x86_64")
+
+    assert result == [{"name": "test_package"}]
 
 
-def test_get_branch_packages_failure(alt_linux_api: AltLinuxAPI, mocker: MockType):
+def test_fetch_packages_empty_response(mocker: MockerFixture) -> None:
     """
-    Test function to validate failure in retrieving branch packages.
-    Args:
-        alt_linux_api (AltLinuxAPI): An instance of AltLinuxAPI for testing purposes.
-        mocker (MockType): A mocker object for mocking requests.
+    Test for successful fetching of packages when the response is empty.
     """
-    mocker.patch("requests.get", side_effect=Exception("API error"))
-
-    with pytest.raises(Exception):
-        alt_linux_api.get_branch_packages("p10")
-
-
-def test_get_branch_packages_no_packages(alt_linux_api: AltLinuxAPI, mocker: MockType):
-    """
-    Test function to validate retrieval of branch packages with no packages.
-    Args:
-        alt_linux_api (AltLinuxAPI): An instance of AltLinuxAPI for testing.
-        mocker (MockType): A mocker object for mocking requests.
-    """
+    api = AltLinuxAPI()
     mock_response = mocker.Mock()
-    mock_response.json.return_value = {"request_args": {}, "length": 0, "packages": []}
-    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {"packages": []}
     mocker.patch("requests.get", return_value=mock_response)
 
-    result = alt_linux_api.get_branch_packages("p10")
-    assert isinstance(result, BranchPackages)
-    assert len(result.packages) == 0
+    result = api.fetch_packages("sisyphus", "x86_64")
+
+    assert result == []
+
+
+def test_fetch_packages_invalid_branch(mocker: MockerFixture) -> None:
+    """
+    Test for fetching packages for an invalid branch.
+    """
+    api = AltLinuxAPI()
+    mock_log_error = mocker.patch("src.altlinux_api.log.error")
+
+    api.fetch_packages("invalid_branch", "x86_64")
+
+    assert mock_log_error.call_count == 2
+
+    first_call_args = mock_log_error.call_args_list[0][0][0]
+    assert "Invalid branch 'invalid_branch'" in first_call_args
+    assert "Allowed branches:" in first_call_args
+    assert "p10" in first_call_args
+    assert "sisyphus" in first_call_args
+
+    second_call_args = mock_log_error.call_args_list[1][0][0]
+    assert "Failed to fetch data for branch invalid_branch:" in second_call_args
+    assert "400 Client Error: Bad Request for url:" in second_call_args
+    assert (
+        "https://rdb.altlinux.org/api/export/branch_binary_packages/invalid_branch?arch=x86_64"
+        in second_call_args
+    )
