@@ -90,11 +90,11 @@ compare_packages -a x86_64 -o only_in_p10
 
 The tool will fetch the package data, perform the comparison, and output the result in JSON format:
 
-<img src="img/fetch.png">
+<img src="img/ffetch.png">
 <img src="img/success.png">
-<img src="img/list_files.png">
+<img src="img/flist_files.png">
 
-<img src="img/result_json.png">
+<img src="img/fresult_json.png">
 
 ## Running Tests
 
@@ -104,17 +104,17 @@ poetry run pytest --cov=src --cov-report=html
 ```
 This will run all the tests and generate a coverage report in HTML format.
 
-<img src="img/tests.png">
+<img src="img/ftests.png">
 
 Tests creates and overwrites the result JSON files:
 
-<img src="img/list_json.png">
+<img src="img/flist_json.png">
 
-<img src="img/result_tests.png">
+<img src="img/fresult_tests.png">
 
 Test Coverage:
 
-<img src="img/coverage.png">
+<img src="img/fcoverage.png">
 
 ## Authors
 
