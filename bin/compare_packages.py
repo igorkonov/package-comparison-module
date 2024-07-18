@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-
 from src.cli import run_comparison, parse_args
 from src.logging_config import log
 
-if __name__ == "__main__":
+
+def main():
     args = parse_args()
     success = run_comparison(args.arch, args.output_file)
     if success:
@@ -11,3 +11,7 @@ if __name__ == "__main__":
     else:
         log.error("Comparison failed.")
         exit(1)
+
+
+if __name__ == "__main__":
+    main()
