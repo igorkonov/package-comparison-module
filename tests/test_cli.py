@@ -1,70 +1,97 @@
+import argparse
 import pytest
-from click.testing import CliRunner
-from pytest_mock import MockType
-from src.cli import main
+from pytest_mock import MockerFixture
+from src.cli import run_comparison, parse_args
 
 
-@pytest.fixture
-def cli_runner():
+def test_parse_args(mocker: MockerFixture) -> None:
     """
-    Fixture function to create an instance of CliRunner for testing purposes.
-    """
-    return CliRunner()
-
-
-def test_cli_menu(cli_runner: CliRunner):
-    """
-    Test for CLI menu functionality.
-    Args:
-        cli_runner (CliRunner): An instance of CliRunner for testing purposes.
-    """
-    result = cli_runner.invoke(main, input="5\n")
-    assert result.exit_code == 0
-    assert "Welcome to the Package Comparison Tool!" in result.output
-    assert "Exiting the program. Goodbye!" in result.output
-
-
-@pytest.mark.parametrize("choice", [1, 2, 3, 4])
-def test_cli_comparison_types(cli_runner: CliRunner, mocker: MockType, choice: int):
-    """
-    Test CLI comparison types with specified choices.
-    Args:
-        cli_runner (CliRunner): An instance of CliRunner for testing purposes.
-        mocker (MockType): A mocker object for mocking purposes.
-        choice (int): The choice for comparison testing.
+    Test function for parsing command-line arguments.
     """
     mocker.patch(
-        "src.cli.AltLinuxAPI.get_branch_packages",
-        return_value=mocker.Mock(packages=[]),
+        "sys.argv", ["script_name", "--arch", "x86_64", "--output", "test_output"]
     )
-    result = cli_runner.invoke(main, input=f"{choice}\nn\n")
-    assert result.exit_code == 0
-    assert "Fetching packages for p10 and sisyphus..." in result.output
-    assert "Comparing packages..." in result.output
+    args: argparse.Namespace = parse_args()
+    assert args.arch == "x86_64"
+    assert args.output_file == "test_output"
+
+    mocker.patch("sys.argv", ["script_name"])
+    args = parse_args()
+    assert args.arch is None
+    assert args.output_file == "all_packages"
 
 
-def test_invalid_choice(cli_runner: CliRunner):
+@pytest.mark.parametrize(
+    "output_file", ["only_in_p10", "only_in_sisyphus", "higher_in_sisyphus"]
+)
+def test_run_comparison_specific_output(
+    mocker: MockerFixture, output_file: str
+) -> None:
     """
-    Test for invalid choice handling.
-    Args:
-        cli_runner (CliRunner): An instance of CliRunner for testing purposes.
-    """
-    result = cli_runner.invoke(main, input="6\n5\n")
-    assert result.exit_code == 0
-    assert "Invalid choice. Please try again." in result.output
-
-
-def test_no_comparisons(cli_runner: CliRunner, mocker: MockType):
-    """
-    Test for no comparisons made.
-    Args:
-        cli_runner (CliRunner): An instance of CliRunner for testing purposes.
-        mocker (MockType): A mocker object for mocking purposes.
+    Test the run_comparison function for specific output files.
     """
     mocker.patch(
-        "src.cli.AltLinuxAPI.get_branch_packages",
-        return_value=mocker.Mock(packages=[]),
+        "src.altlinux_api.AltLinuxAPI.fetch_packages",
+        return_value=[{"name": "test", "version": "1.0", "release": "1"}],
     )
-    result = cli_runner.invoke(main, input="1\nn\n")
-    assert result.exit_code == 0
-    assert "Exiting the program. Goodbye!" in result.output
+    mocker.patch(
+        "src.comparison.compare_packages",
+        return_value={
+            "only_in_p10": [{"name": "test1"}],
+            "only_in_sisyphus": [{"name": "test2"}],
+            "higher_in_sisyphus": [{"name": "test3"}],
+        },
+    )
+    mocker.patch("src.cli.filter_package_data", return_value=[{"name": "filtered"}])
+
+    result = run_comparison("x86_64", output_file)
+    assert result is True
+
+
+def test_run_comparison_fetch_error(mocker: MockerFixture) -> None:
+    """
+    Test the run_comparison function when a fetch error occurs.
+    """
+    mocker.patch(
+        "src.altlinux_api.AltLinuxAPI.fetch_packages",
+        side_effect=Exception("Fetch error"),
+    )
+    result = run_comparison("x86_64", "test_output")
+    assert result is False
+
+
+def test_run_comparison_filter_error(mocker: MockerFixture) -> None:
+    """
+    Test the run_comparison function when a filter error occurs.
+    """
+    mocker.patch(
+        "src.altlinux_api.AltLinuxAPI.fetch_packages",
+        return_value=[{"name": "test", "version": "1.0", "release": "1"}],
+    )
+    mocker.patch(
+        "src.comparison.compare_packages",
+        return_value={
+            "only_in_p10": [{"name": "test"}],
+            "only_in_sisyphus": [{"name": "test"}],
+            "higher_in_sisyphus": [{"name": "test"}],
+        },
+    )
+    mocker.patch("src.cli.filter_package_data", side_effect=Exception("Filter error"))
+    result = run_comparison("x86_64", "test_output")
+    assert result is False
+
+
+def test_run_comparison_compare_error(mocker: MockerFixture) -> None:
+    """
+    Test the run_comparison function when a comparison error occurs.
+    """
+    mocker.patch(
+        "src.altlinux_api.AltLinuxAPI.fetch_packages",
+        return_value=[{"name": "test", "version": "1.0", "release": "1"}],
+    )
+    mocker.patch(
+        "src.comparison.compare_packages",
+        side_effect=Exception("Comparison error"),
+    )
+    result = run_comparison("x86_64", "all_packages")
+    assert result is True

@@ -1,5 +1,5 @@
-from loguru import logger
 import sys
+from loguru import logger
 
 
 def setup_logger() -> logger:
@@ -52,28 +52,28 @@ def setup_logger() -> logger:
     )
 
     logger.add(
-        "logs/debug.log",
+        "../logs/debug.log",
         rotation="100 MB",
         level="DEBUG",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
         compression="zip",
     )
     logger.add(
-        "logs/info.log",
+        "../logs/info.log",
         rotation="100 MB",
         level="INFO",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
         compression="zip",
     )
     logger.add(
-        "logs/warning.log",
+        "../logs/warning.log",
         rotation="100 MB",
         level="WARNING",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
         compression="zip",
     )
     logger.add(
-        "logs/error.log",
+        "../logs/error.log",
         rotation="100 MB",
         level="ERROR",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",

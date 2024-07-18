@@ -1,127 +1,99 @@
-import click
-
-from typing import List
-from src.models import ComparisonResult
+import argparse
+from argparse import ArgumentParser
 from src.altlinux_api import AltLinuxAPI
-from src.comparison import PackageComparator
 from src.config import config
-from src.utils import get_dump_json, setup_pandas_display, log_summary, display_packages
+from src.utils import get_dump_json, log_packages
+from src.comparison import compare_packages, filter_package_data
+from src.logging_config import log
 
 
-def print_menu():
+def parse_args() -> argparse.Namespace:
     """
-    A function to print the menu options for the Package Comparison Tool.
+    Parse command line arguments.
+    Returns:
+        argparse.Namespace: The parsed command line arguments.
     """
-    click.echo(
-        click.style("Welcome to the Package Comparison Tool!", fg="green", bold=True)
+    parser: ArgumentParser = ArgumentParser(
+        prog="compare_packages",
+        description="Compare binary packages between sisyphus and p10 branches.",
+        usage="compare_packages [-a <arch>] [-o <output_file>]",
     )
-    click.echo(click.style("Choose comparison type:", fg="yellow"))
-    click.echo(click.style("1. Only in P10", fg="cyan"))
-    click.echo(click.style("2. Only in Sisyphus", fg="cyan"))
-    click.echo(click.style("3. Higher in Sisyphus", fg="cyan"))
-    click.echo(click.style("4. All", fg="cyan"))
-    click.echo(click.style("5. Exit", fg="red"))
+    parser.add_argument(
+        "-a",
+        "--arch",
+        dest="arch",
+        help="Specify the architecture to compare (x86_64, ppc64le, i586, armh, aarch64).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output_file",
+        help="Specify the output JSON file to save (only_in_p10, only_in_sisyphus, higher_in_sisyphus, all_packages).",
+        default="all_packages",
+    )
+    return parser.parse_args()
 
 
-@click.command()
-def main():
+def run_comparison(arch: str, output_file: str) -> bool:
     """
-    Function to run the Package Comparison Tool.
+    Runs the package comparison for the specified architecture and saves the result to a JSON file.
+    Args:
+        arch (str): The architecture to compare.
+        output_file (str): The name of the output JSON file.
+    Returns:
+        bool: True if the comparison and saving were successful, False otherwise.
     """
-    setup_pandas_display()
-    api = AltLinuxAPI()
-    branch_p10: str = config.branch_p10
-    branch_sisyphus: str = config.branch_sisyphus
+    api: AltLinuxAPI = AltLinuxAPI()
 
-    while True:
-        print_menu()
-        try:
-            choice: int = click.prompt(
-                click.style("Enter your choice (1-5)", fg="yellow"), type=int
-            )
-        except UnicodeDecodeError:
-            click.echo(
-                click.style("Invalid input. Please use UTF-8 characters.", fg="red")
-            )
-            continue
+    log.info(f"Fetching packages for architecture: {arch}")
 
-        if choice == 5:
-            click.echo(click.style("Exiting the program. Goodbye!", fg="green"))
-            return
+    packages: dict = {}
+    try:
+        for branch in config.branches:
+            packages[branch] = api.fetch_packages(branch, arch)
+    except Exception as e:
+        log.error(f"Error fetching packages: {e}")
+        return False
 
-        if choice < 1 or choice > 4:
-            click.echo(click.style("Invalid choice. Please try again.", fg="red"))
-            continue
+    log_packages(packages)
 
-        output_options: List[str] = [
-            "only_in_p10",
-            "only_in_sisyphus",
-            "higher_in_sisyphus",
-            "all",
-        ]
-        output_only: str = output_options[choice - 1]
-
-        click.echo(
-            click.style(
-                f"Fetching packages for {branch_p10} and {branch_sisyphus}...",
-                fg="yellow",
-            )
+    try:
+        comparison_result: dict = compare_packages(
+            packages["sisyphus"], packages["p10"]
         )
-        p10_packages = api.get_branch_packages(branch_p10).packages
-        sisyphus_packages = api.get_branch_packages(branch_sisyphus).packages
+    except Exception as e:
+        log.error(f"Error comparing packages: {e}")
+        return False
 
-        if output_only == "only_in_p10":
-            display_packages(p10_packages, "Packages only in P10:")
-        elif output_only == "only_in_sisyphus":
-            display_packages(sisyphus_packages, "Packages only in Sisyphus:")
-        elif output_only == "higher_in_sisyphus":
-            display_packages(sisyphus_packages, "Packages higher in Sisyphus:")
-        elif output_only == "all":
-            click.echo(click.style("All downloaded packages:", fg="cyan"))
-            click.echo("Packages in P10:")
-            display_packages(p10_packages, "Packages in P10:")
-            click.echo("Packages in Sisyphus:")
-            display_packages(sisyphus_packages, "Packages in Sisyphus:")
+    try:
+        comparison_result["only_in_p10"] = filter_package_data(
+            comparison_result["only_in_p10"]
+        )
+        comparison_result["only_in_sisyphus"] = filter_package_data(
+            comparison_result["only_in_sisyphus"]
+        )
+        comparison_result["higher_in_sisyphus"] = filter_package_data(
+            comparison_result["higher_in_sisyphus"]
+        )
+    except Exception as e:
+        log.error(f"Error processing packages: {e}")
+        return False
 
-        comparator: PackageComparator = PackageComparator()
-        comparator.packages["p10"] = p10_packages
-        comparator.packages["sisyphus"] = sisyphus_packages
-
-        click.echo(click.style("Comparing packages...", fg="yellow"))
-        comparison_result: ComparisonResult = comparator.compare_packages()
-
-        if comparison_result:
-            log_summary(comparison_result, output_only)
-            filename: str = f"comparison_{output_only}.json"
-            if output_only == "all":
-                get_dump_json(comparison_result, filename)
-            else:
-                get_dump_json(
-                    {output_only: getattr(comparison_result, output_only)}, filename
-                )
-            click.echo(click.style(f"Results saved to {filename}", fg="green"))
+    try:
+        if output_file == "only_in_p10":
+            data_to_save = {output_file: {arch: comparison_result["only_in_p10"]}}
+        elif output_file == "only_in_sisyphus":
+            data_to_save = {output_file: {arch: comparison_result["only_in_sisyphus"]}}
+        elif output_file == "higher_in_sisyphus":
+            data_to_save = {
+                output_file: {arch: comparison_result["higher_in_sisyphus"]}
+            }
         else:
-            click.echo(
-                click.style(
-                    "No comparisons were successful. No output file created.", fg="red"
-                )
-            )
+            data_to_save: dict = {output_file: {arch: comparison_result}}
 
-        try:
-            if not click.confirm(
-                click.style("Do you want to perform another comparison?", fg="yellow"),
-                prompt_suffix=" ",
-            ):
-                click.echo(click.style("Exiting the program. Goodbye!", fg="green"))
-                break
-        except UnicodeDecodeError:
-            click.echo(
-                click.style(
-                    "Error: Unable to process input. Please ensure your input is valid UTF-8.",
-                    fg="red",
-                )
-            )
+        get_dump_json(data_to_save, f"{output_file}.json")
+        return True
 
-
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        log.error(f"Error saving {output_file}.json: {e}")
+        return False
