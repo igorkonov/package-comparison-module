@@ -4,6 +4,9 @@ version = "0.1.0"
 description = ""
 authors = ["igorkonov <igorkonov1993@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "src"},
+]
 
 
 [tool.poetry.dependencies]
@@ -24,3 +27,6 @@ pytest-mock = "^3.14.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+compare_packages = "bin.compare_packages:main"
